@@ -1,7 +1,4 @@
 'use strict';
-
-import './smoothAppearing.css';
-
 if ('NodeList' in window && !NodeList.prototype.forEach) {
   console.info('polyfill for IE11');
   NodeList.prototype.forEach = function (callback, thisArg) {
@@ -17,9 +14,9 @@ export default class SmoothAppearing {
     this.animationSpeed = '1s';
     this.delay = 500;
 
-    this.ANIMATION_CLASSES = '.appears-top, .appears-bottom, .appears-left, .appears-right';
+    this.ANIMATION_CLASSES = '.appears-top, .appears-bottom, .appears-left, .appears-right, .appears-hidden';
     this.ANIMATION_CLASSES_ARRAY = [
-      'appears-top', 'appears-bottom', 'appears-left', 'appears-right'
+      'appears-top', 'appears-bottom', 'appears-left', 'appears-right', 'appears-hidden'
     ];
     this.ANIMATION_STATES = ['waiting', 'in_progress', 'ended'];
     this.SCROLL_Y = {
@@ -27,6 +24,8 @@ export default class SmoothAppearing {
       curr: window.scrollY,
       dir: undefined
     }
+
+    this.animationElements;
 
     this.wrapper = this.wrapContent();
   }
@@ -45,6 +44,7 @@ export default class SmoothAppearing {
 
   // Задаем к обертке ширину и высоту, равную ширине и высоте всего документа, так же задаем overflow
   // По завершению анимации данные стили удаляются
+  // Изменить. Задаваться должны перед началом конкретной анимации, удаляться по завершению анимации, если нет анимация в процессе.
   setWrapperStyle(wrapper) {
     wrapper.style.height = document.documentElement.scrollHeight + 'px';
     wrapper.style.width = document.documentElement.scrollWidth + 'px';
@@ -68,6 +68,9 @@ export default class SmoothAppearing {
       element.style.transition = null;
       element.classList.remove('appears-top');
       element._animationState = ANIMATION_STATES[2];
+
+      if (!this.isAnimInProgress(this.animationElements))
+        this.clear();
     }
 
     const { height, y } = element.getBoundingClientRect();
@@ -121,6 +124,9 @@ export default class SmoothAppearing {
       element.style.transition = null;
       element.classList.remove('appears-bottom');
       element._animationState = ANIMATION_STATES[2];
+
+      if (!this.isAnimInProgress(this.animationElements))
+        this.clear();
     }
 
     const { height, y } = element.getBoundingClientRect();
@@ -168,6 +174,9 @@ export default class SmoothAppearing {
       element.style.transition = null;
       element.classList.remove('appears-left');
       element._animationState = ANIMATION_STATES[2];
+
+      if (!this.isAnimInProgress(this.animationElements))
+        this.clear();
     }
 
     const { width, x } = element.getBoundingClientRect();
@@ -215,6 +224,9 @@ export default class SmoothAppearing {
       element.style.transition = null;
       element.classList.remove('appears-right');
       element._animationState = ANIMATION_STATES[2];
+
+      if (!this.isAnimInProgress(this.animationElements))
+        this.clear();
     }
 
     const { width, x } = element.getBoundingClientRect();
@@ -243,6 +255,44 @@ export default class SmoothAppearing {
         element.addEventListener('transitionend', onTransitionEnd);
         break;
     }
+  }
+
+  // Метод анимированного появления элемента из за на месте из невидимости.
+  appearsHidden(element) {
+
+    const animationSpeed = this.animationSpeed;
+    const delay = this.delay;
+    const ANIMATION_CLASSES = this.ANIMATION_CLASSES;
+    const ANIMATION_CLASSES_ARRAY = this.ANIMATION_CLASSES_ARRAY;
+    const ANIMATION_STATES = this.ANIMATION_STATES;
+    const SCROLL_Y = this.SCROLL_Y;
+
+    const onTransitionEnd = (e) => {
+      element.style.transition = null;
+      element.classList.remove('appears-hidden');
+      element.style.opacity = null;
+      element._animationState = ANIMATION_STATES[2];
+
+      if (!this.isAnimInProgress(this.animationElements))
+        this.clear();
+    }
+
+    element._animationState = ANIMATION_STATES[1];
+
+    element.style.opacity = 0;
+    setTimeout(() => element.style.transition = `opacity ${animationSpeed}`, 1);
+    setTimeout(() => element.style.opacity = 1, delay);
+    setTimeout(onTransitionEnd, (parseFloat(animationSpeed) * 1000) * 1.2 + delay);
+    element.addEventListener('transitionend', onTransitionEnd);
+
+  }
+
+  isAnimInProgress(elements) {
+    elements.forEach(el => {
+      if (el._animationState === this.ANIMATION_STATES[1])
+        return true;
+    });
+    return false;
   }
 
   // Очистка стилей для обертки
@@ -276,23 +326,27 @@ export default class SmoothAppearing {
       case ANIMATION_CLASSES_ARRAY[3]:
         this.appearsFromRight(element, wasScrolled);
         break;
+      case ANIMATION_CLASSES_ARRAY[4]:
+        this.appearsHidden(element, wasScrolled);
+        break;
     }
   }
 
   // Функция запускает все анимации на странице
-  runAnimation(animSpeed, animDelay = this.delay) {
+  runAnimation(animSpeed, animDelay) {
 
     const animationSpeed = this.animationSpeed;
-    const delay = this.delay;
     const ANIMATION_CLASSES = this.ANIMATION_CLASSES;
     const ANIMATION_CLASSES_ARRAY = this.ANIMATION_CLASSES_ARRAY;
     const ANIMATION_STATES = this.ANIMATION_STATES;
     const SCROLL_Y = this.SCROLL_Y;
 
-    this.animationSpeed = typeof(animSpeed) === 'number' ? animSpeed / 1000 + 's' : animSpeed;
-    this.delay = animDelay;
+    animSpeed && (this.animationSpeed = typeof(animSpeed) === 'number' ? animSpeed / 1000 + 's' : animSpeed);
+    this.delay = animDelay || this.delay;
+    const delay = this.delay;
   
     const elementsToAnimate = document.querySelectorAll(ANIMATION_CLASSES);
+    this.animationElements = elementsToAnimate;
     this.initElements(elementsToAnimate);
     this.setWrapperStyle(this.wrapper);
     elementsToAnimate.forEach(el => this.animateElement(el));
@@ -301,10 +355,9 @@ export default class SmoothAppearing {
   }
   
   // После вызова функции, запускаются анимации, при прокрутке до них
-  runAnimationOnScroll(animSpeed, animDelay = this.delay) {
+  runAnimationOnScroll(animSpeed, animDelay) {
 
     const animationSpeed = this.animationSpeed;
-    const delay = this.delay;
     const ANIMATION_CLASSES = this.ANIMATION_CLASSES;
     const ANIMATION_CLASSES_ARRAY = this.ANIMATION_CLASSES_ARRAY;
     const ANIMATION_STATES = this.ANIMATION_STATES;
@@ -320,9 +373,9 @@ export default class SmoothAppearing {
                      SCROLL_Y.curr < SCROLL_Y.prev ? 'up' :
                      undefined;
       elementsToAnimate.forEach(el => {
-        if (el.getBoundingClientRect().y < window.scrollY + window.innerHeight && 
+        if (el.getBoundingClientRect().y < window.innerHeight && 
             el._animationState === ANIMATION_STATES[0] &&
-            el.getBoundingClientRect().y + el.getBoundingClientRect().height > window.scrollY - window.innerHeight) {
+            el.getBoundingClientRect().y + el.getBoundingClientRect().height > 0) {
           this.setWrapperStyle(this.wrapper);
           this.animateElement(el, wasScrolled);
         }
@@ -330,10 +383,12 @@ export default class SmoothAppearing {
       wasScrolled = true;
     }
 
-    this.animationSpeed = typeof(animSpeed) === 'number' ? animSpeed / 1000 + 's' : animSpeed;
-    this.delay = animDelay;
+    animSpeed && (this.animationSpeed = typeof(animSpeed) === 'number' ? animSpeed / 1000 + 's' : animSpeed);
+    this.delay = animDelay || this.delay;
+    const delay = this.delay;
   
     const elementsToAnimate = document.querySelectorAll(ANIMATION_CLASSES);
+    this.animationElements = elementsToAnimate;
     this.initElements(elementsToAnimate);
     onWindowScrollRunAnim();
   
